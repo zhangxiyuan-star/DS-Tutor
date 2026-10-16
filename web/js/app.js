@@ -49,7 +49,7 @@
     const seg = current;
     seg.done = true;
     seg.body.classList.remove("typing-dot");
-    const { html, blocks, visBlocks } = Agent.renderMarkdown(seg.text);
+    const { html, blocks, visBlocks, quizBlocks } = Agent.renderMarkdown(seg.text);
     seg.body.innerHTML = html;
     current = null;
     scrollDown();
@@ -57,6 +57,8 @@
     blocks.filter((b) => b.autoRun).forEach((b) => runCard(b.elId, b.lang, b.code));
     // 兼容模式：visualize JSON 块自动渲染为动画
     visBlocks.forEach((b) => mountVis(b.elId, b.spec));
+    // 兼容模式：quiz JSON 块自动渲染为测验题卡
+    quizBlocks.forEach((b) => mountQuiz(b.elId, b.spec));
     return seg;
   }
 
@@ -81,6 +83,233 @@
     mountVis(wrap.querySelector(".vis-mount"), spec);
     scrollDown();
     return wrap;
+  }
+
+  // ---------------- 测验题卡（V3） ----------------
+  const QUIZ_KIND_LABEL = { choice: "单选题", fill: "填空题", code: "编程题" };
+
+  // 填空比对：忽略大小写、首尾空白、连续空格
+  function normFill(s) { return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " "); }
+  // 输出比对：忽略行尾空白与整体首尾空白
+  function normOut(s) { return String(s ?? "").split("\n").map((l) => l.replace(/\s+$/g, "")).join("\n").trim(); }
+
+  function mountQuiz(elIdOrEl, spec) {
+    const host = typeof elIdOrEl === "string" ? document.getElementById(elIdOrEl) : elIdOrEl;
+    if (!host) return;
+    const err = (!spec || "__parseError" in spec)
+      ? "quiz 代码块必须是严格合法的 JSON，不能有注释或多余逗号。"
+      : Agent.validateQuiz(spec);
+    if (err) {
+      host.innerHTML = `<div class="quiz-card">
+        <div class="quiz-head"><span class="quiz-kind quiz-kind-err">题目参数有误</span></div>
+        <div class="vis-error">${escapeHtml(err)}</div></div>`;
+      return;
+    }
+    host.innerHTML = "";
+    host.appendChild(buildQuizCard(spec));
+    scrollDown();
+  }
+
+  function addQuizCard(spec) {
+    const wrap = document.createElement("div");
+    wrap.className = "msg";
+    wrap.innerHTML = `<div class="tool-note quiz-note">✎ 随堂测验 · ${escapeHtml(spec.topic)}（作答后自动判题并记入学习档案）</div><div class="quiz-mount"></div>`;
+    messagesEl.appendChild(wrap);
+    mountQuiz(wrap.querySelector(".quiz-mount"), spec);
+    scrollDown();
+    return wrap;
+  }
+
+  /** 构建一道可作答、自动判题的测验题卡 */
+  function buildQuizCard(spec) {
+    const card = document.createElement("div");
+    card.className = "quiz-card";
+
+    const head = document.createElement("div");
+    head.className = "quiz-head";
+    head.innerHTML = `<span class="quiz-kind">${QUIZ_KIND_LABEL[spec.kind] || "测验"}</span>`
+      + `<span class="quiz-topic">${escapeHtml(spec.topic)}</span>`;
+    card.appendChild(head);
+
+    const q = document.createElement("div");
+    q.className = "quiz-q";
+    q.innerHTML = DOMPurify.sanitize(marked.parse(String(spec.question || "")));
+    card.appendChild(q);
+
+    const body = document.createElement("div");
+    body.className = "quiz-body";
+    card.appendChild(body);
+
+    // 三种题型的作答区
+    let ta = null;
+    if (spec.kind === "choice") {
+      const gname = "quiz-" + Math.random().toString(36).slice(2, 8);
+      spec.options.forEach((opt, i) => {
+        const label = document.createElement("label");
+        label.className = "quiz-opt";
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = gname;
+        radio.value = i;
+        const span = document.createElement("span");
+        span.innerHTML = DOMPurify.sanitize(marked.parseInline(String(opt)));
+        label.appendChild(radio);
+        label.appendChild(span);
+        body.appendChild(label);
+      });
+    } else if (spec.kind === "fill") {
+      const inp = document.createElement("input");
+      inp.className = "quiz-fill";
+      inp.placeholder = "输入答案…";
+      body.appendChild(inp);
+    } else {
+      ta = document.createElement("textarea");
+      ta.className = "quiz-code";
+      ta.spellcheck = false;
+      ta.value = spec.starter_code || "";
+      body.appendChild(ta);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "quiz-actions";
+    const btnSubmit = document.createElement("button");
+    btnSubmit.className = "btn-primary quiz-submit";
+    btnSubmit.textContent = spec.kind === "code" ? "▶ 运行判题" : "提交作答";
+    actions.appendChild(btnSubmit);
+    if (spec.kind === "code") {
+      const btnOpen = document.createElement("button");
+      btnOpen.className = "quiz-mini-btn";
+      btnOpen.textContent = "↧ 工作台打开";
+      btnOpen.onclick = () => openInWorkbench(spec.language, ta.value);
+      actions.appendChild(btnOpen);
+    }
+    const hint = document.createElement("span");
+    hint.className = "quiz-hint";
+    actions.appendChild(hint);
+    card.appendChild(actions);
+
+    let answered = false;
+
+    function showResult(right, myDisplay, runNote) {
+      answered = true;
+      card.classList.add("done");
+      body.querySelectorAll("input, textarea").forEach((el) => (el.disabled = true));
+      btnSubmit.disabled = true;
+      hint.textContent = "";
+
+      const correctText = spec.kind === "choice"
+        ? String(spec.options[spec.answer])
+        : spec.kind === "fill"
+          ? String(spec.answer).split("|")[0].trim()
+          : null;
+
+      const res = document.createElement("div");
+      res.className = "quiz-result " + (right ? "ok" : "err");
+      const lines = [];
+      lines.push(`<div class="qr-line">${right ? "✓ 回答正确" : "✗ 回答错误"}</div>`);
+      if (!right && correctText != null)
+        lines.push(`<div class="qr-ans">正确答案：${escapeHtml(correctText)}</div>`);
+      if (runNote != null)
+        lines.push(`<pre class="qr-out">${escapeHtml(runNote) || "（程序无输出）"}</pre>`);
+      res.innerHTML = lines.join("");
+
+      const exp = document.createElement("div");
+      exp.className = "quiz-exp";
+      exp.innerHTML = DOMPurify.sanitize(marked.parse("**解析：** " + String(spec.explanation || "")));
+      res.appendChild(exp);
+
+      if (!right) {
+        const btnExplain = document.createElement("button");
+        btnExplain.className = "quiz-mini-btn quiz-explain";
+        btnExplain.textContent = "让 Agent 讲解这道题 →";
+        btnExplain.onclick = () => send(
+          `刚才那道${QUIZ_KIND_LABEL[spec.kind]}（知识点：${spec.topic}）我答错了。\n`
+          + `题目：${spec.question}\n我的作答：${myDisplay}\n`
+          + `请分析我的错因，并把相关知识点讲透。`
+        );
+        res.appendChild(btnExplain);
+      }
+      card.appendChild(res);
+      scrollDown();
+    }
+
+    btnSubmit.onclick = async () => {
+      if (answered) return;
+      if (spec.kind === "choice") {
+        const idx = [...body.querySelectorAll("input")].findIndex((r) => r.checked);
+        if (idx < 0) { hint.textContent = "请先选择一个选项"; return; }
+        const right = idx === spec.answer;
+        Progress.record(spec.topic, right, { kind: spec.kind, brief: spec.question });
+        showResult(right, String(spec.options[idx]));
+      } else if (spec.kind === "fill") {
+        const inp = body.querySelector("input");
+        const v = normFill(inp.value);
+        if (!v) { hint.textContent = "请先填写答案"; return; }
+        const rights = String(spec.answer).split("|").map(normFill);
+        const right = rights.includes(v);
+        Progress.record(spec.topic, right, { kind: spec.kind, brief: spec.question });
+        showResult(right, inp.value.trim());
+      } else {
+        const code = ta.value.trim();
+        if (!code) { hint.textContent = "请先编写代码"; return; }
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "判题中…";
+        hint.textContent = "";
+        const result = await Sandbox.runCode(spec.language, ta.value);
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "▶ 运行判题";
+        const right = !!result.ok && normOut(result.stdout) === normOut(spec.answer);
+        const runNote = result.ok
+          ? "你的程序输出：\n" + (result.stdout || "（无输出）") + (right ? "" : "\n期望输出：\n" + spec.answer)
+          : "程序运行出错：\n" + (result.error || result.stderr || "未知错误");
+        const myDisplay = result.ok ? "代码输出与期望" + (right ? "一致" : "不一致") : "代码运行出错";
+        Progress.record(spec.topic, right, { kind: spec.kind, brief: spec.question });
+        showResult(right, myDisplay, runNote);
+      }
+    };
+
+    return card;
+  }
+
+  // ---------------- 学习进度面板（V3） ----------------
+  const progressMask = $("#progressMask");
+
+  function openProgress() { renderProgress(); progressMask.classList.remove("hidden"); }
+  function closeProgress() { progressMask.classList.add("hidden"); }
+
+  function renderProgress() {
+    const body = $("#progressBody");
+    const s = Progress.summary();
+    if (!s.total) {
+      body.innerHTML = `<p class="pg-empty">还没有测验记录。<br>对话中 Agent 会在合适时机出随堂测验，你也可以直接对它说「给我出几道题」。</p>`;
+    } else {
+      const pct = Math.round(s.acc * 100);
+      body.innerHTML = `
+        <div class="pg-overview">
+          <div class="pg-num"><b>${s.total}</b><span>累计答题</span></div>
+          <div class="pg-num"><b>${pct}%</b><span>总正确率</span></div>
+          <div class="pg-num"><b>${s.weak.length}</b><span>薄弱知识点</span></div>
+        </div>
+        ${s.weak.length
+          ? `<div class="pg-weak">薄弱点：${s.weak.map((t) => `<span class="pg-weak-chip">${escapeHtml(t.name)} ${Math.round(t.acc * 100)}%</span>`).join("")}</div>`
+          : `<div class="pg-weak pg-weak-ok">✓ 各知识点掌握良好，继续保持！</div>`}
+        <div class="pg-topics">${s.topics.map((t) => `
+          <div class="pg-topic">
+            <span class="pg-name">${escapeHtml(t.name)}</span>
+            <span class="pg-bar"><i style="width:${Math.max(Math.round(t.acc * 100), 4)}%" class="${t.total >= 2 && t.acc < 0.6 ? "weak" : ""}"></i></span>
+            <span class="pg-frac">${t.right}/${t.total}</span>
+          </div>`).join("")}
+        </div>
+        <div class="pg-events-title">最近作答</div>
+        <div class="pg-events">${s.events.slice(0, 8).map((e) => `
+          <div class="pg-event ${e.ok ? "ok" : "err"}">
+            <span class="pg-mark">${e.ok ? "✓" : "✗"}</span>
+            <span class="pg-etitle">[${escapeHtml(e.topic)}] ${escapeHtml(e.brief || QUIZ_KIND_LABEL[e.kind] || "")}</span>
+            <span class="pg-time">${new Date(e.ts).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+          </div>`).join("")}
+        </div>`;
+    }
+    $("#btnQuizWeak").textContent = s.weak.length ? "针对薄弱点出题" : "给我出几道题";
   }
 
   function addToolCard(language, code) {
@@ -176,6 +405,13 @@
       },
       onVisualize(spec) {
         addVisCard(spec);
+      },
+      onQuizStart() {
+        if (current && current.text.trim()) finalizeSeg();
+        else if (current) { current.body.classList.remove("typing-dot"); current = null; }
+      },
+      onQuiz(spec) {
+        addQuizCard(spec);
       },
       onError(msg) {
         if (current) {
@@ -360,6 +596,20 @@
     $("#cfgPreset").onchange = onPresetChange;
     mask.addEventListener("click", (e) => { if (e.target === mask) closeSettings(); });
 
+    $("#btnProgress").onclick = openProgress;
+    $("#btnCloseProgress").onclick = closeProgress;
+    progressMask.addEventListener("click", (e) => { if (e.target === progressMask) closeProgress(); });
+    $("#btnClearProgress").onclick = () => {
+      if (confirm("确定清空全部学习进度记录吗？")) { Progress.clear(); renderProgress(); }
+    };
+    $("#btnQuizWeak").onclick = () => {
+      const s = Progress.summary();
+      closeProgress();
+      send(s.weak.length
+        ? `请针对我的薄弱知识点（${s.weak.map((t) => t.name).join("、")}）出几道随堂测验题帮我巩固，一次一道。`
+        : "请给我出几道数据结构随堂测验题，检验我的掌握情况，一次一道。");
+    };
+
     $("#btnClear").onclick = () => {
       if (busy) return;
       Agent.reset();
@@ -399,6 +649,7 @@
         <button class="chip" data-q="快速排序为什么平均是 O(nlogn)？最坏情况呢？">快排复杂度</button>
         <button class="chip" data-q="二叉树的前中后序遍历，Python 实现">二叉树遍历（Python）</button>
         <button class="chip" data-q="哈希表是怎么解决冲突的？">哈希冲突</button>
+        <button class="chip" data-q="给我出一道随堂测验题，检验我最近的掌握情况">随堂测验</button>
       </div>
       <p class="hint">先点「⚙ 设置」填好 API，即可开始对话</p>`;
     return div;

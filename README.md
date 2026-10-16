@@ -8,6 +8,8 @@
 - **答疑对话**：苏格拉底引导 / 直接讲解 / 考点向 三种教学风格，流式输出，Markdown 渲染
 - **代码实操**：Monaco 编辑器（C/Python 双缓冲），Python 走 Pyodide 浏览器内运行，C 优先本机 gcc、无编译器时走 Wandbox 云端
 - **结构动画（V2）**：LLM 调用 `visualize` 工具，前端按真实算法逐帧计算并渲染 SVG 动画，卡片内嵌聊天流，支持播放/暂停/单步/进度条/三档速度
+- **随堂测验（V3）**：LLM 调用 `quiz` 工具出单选/填空/编程题，前端渲染可作答卡片并自动判题（编程题走沙箱比对 stdout），答错可一键请求 Agent 讲解
+- **学习进度（V3）**：按知识点记录作答对错，localStorage 持久化；进度面板展示累计统计与薄弱点（作答 ≥2 次且正确率 <60%），可一键针对薄弱点出题；学习档案摘要自动注入系统提示词
 - **API 适配**：OpenAI 兼容协议，Python 后端代理消除 CORS；内置 DeepSeek / Kimi / 智谱 GLM / 通义千问 / OpenAI / Ollama / LM Studio / 自定义 8 组预设；无 function calling 的模型走围栏代码块兼容模式
 
 ## 可视化剧目（6 类）
@@ -38,9 +40,13 @@
 - C/Python 沙箱（Wandbox / Pyodide + 本地回退）、Monaco 双语言工作台
 - PyInstaller 打包 exe 实测通过
 
-### V3（规划）
+### V3（2026-10-16）随堂测验 + 学习进度 ✅
 
-Agent 出题 + 自动判题 + 学习进度 / 薄弱点记忆。
+- 新增 `quiz` 工具（choice/fill/code 三题型）与提示词约定；无 function calling 模型走 ` ```quiz ` JSON 围栏块兼容模式
+- 新增 `web/js/progress.js`：按知识点记录对错、识别薄弱点（≥2 次作答且正确率 <60%）、生成系统提示词注入用的学习档案摘要，localStorage 持久化
+- 聊天流嵌入可作答测验卡片：单选/填空即时判题（填空忽略大小写与首尾空白、支持 `|` 分隔等价答案），编程题沙箱运行比对 stdout（忽略行尾空白）；一题一次作答，答错显示"让 Agent 讲解这道题"
+- 顶栏新增「▤ 学习进度」面板：累计统计、按知识点明细、薄弱点列表，支持"针对薄弱点出题"与清空记录
+- 验证：mock LLM 全链路冒烟通过——三题型渲染、答对/答错判题、进度统计与薄弱点识别、薄弱点定向出题、档案注入系统提示词、围栏兼容模式，浏览器实测均通过，无 JS 报错
 
 ## 使用
 
@@ -59,5 +65,5 @@ ds-tutor/
 └── web/
     ├── index.html
     ├── css/style.css
-    └── js/  config.js / llm.js / prompts.js / sandbox.js / visualizer.js / agent.js / app.js
+    └── js/  config.js / llm.js / prompts.js / progress.js / sandbox.js / visualizer.js / agent.js / app.js
 ```

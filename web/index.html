@@ -20,6 +20,7 @@
     </div>
   </div>
   <div class="top-actions">
+    <button id="btnProgress" class="btn-ghost">▤ 学习进度</button>
     <button id="btnClear" class="btn-ghost" title="清空对话">清空对话</button>
     <button id="btnSettings" class="btn-ghost">⚙ 设置</button>
   </div>
@@ -40,6 +41,7 @@
           <button class="chip" data-q="快速排序为什么平均是 O(nlogn)？最坏情况呢？">快排复杂度</button>
           <button class="chip" data-q="二叉树的前中后序遍历，Python 实现">二叉树遍历（Python）</button>
           <button class="chip" data-q="哈希表是怎么解决冲突的？">哈希冲突</button>
+          <button class="chip" data-q="给我出一道随堂测验题，检验我最近的掌握情况">随堂测验</button>
         </div>
         <p class="hint">先点「⚙ 设置」填好 API，即可开始对话</p>
       </div>
@@ -127,11 +129,28 @@
   </div>
 </div>
 
+<!-- 学习进度弹窗 -->
+<div id="progressMask" class="mask hidden">
+  <div class="dialog">
+    <div class="dialog-head">
+      <h2>学习进度</h2>
+      <button id="btnCloseProgress" class="btn-mini">✕</button>
+    </div>
+    <div class="dialog-body" id="progressBody"></div>
+    <div class="dialog-foot">
+      <button id="btnClearProgress" class="btn-ghost">清空记录</button>
+      <div class="dialog-spacer"></div>
+      <button id="btnQuizWeak" class="btn-primary">给我出几道题</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pyodide & Monaco（按需） -->
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
 <script src="js/prompts.js"></script>
 <script src="js/config.js"></script>
+<script src="js/progress.js"></script>
 <script src="js/llm.js"></script>
 <script src="js/sandbox.js"></script>
 <script src="js/visualizer.js"></script>

@@ -8,7 +8,30 @@
   function buildSystem(cfg) {
     let sys = PROMPTS.base + (PROMPTS.styles[cfg.style] || PROMPTS.styles.guide);
     if (!cfg.tools) sys += PROMPTS.noTools;
+    sys += window.Progress?.promptBrief?.() || "";
     return sys;
+  }
+
+  /** 校验 quiz 题卡参数，合法返回 null，否则返回错误说明 */
+  function validateQuiz(q) {
+    if (!q || typeof q !== "object") return "quiz 参数必须是对象";
+    if (!["choice", "fill", "code"].includes(q.kind)) return "kind 必须是 choice / fill / code";
+    if (!q.topic || !String(q.topic).trim()) return "缺少 topic 知识点标签";
+    if (!q.question || !String(q.question).trim()) return "缺少 question 题干";
+    if (q.kind === "choice") {
+      if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 5)
+        return "choice 题需要 2~5 个 options";
+      if (typeof q.answer !== "number" || q.answer < 0 || q.answer >= q.options.length)
+        return "choice 题 answer 必须是正确选项下标（从 0 开始的数字）";
+    } else if (q.kind === "fill") {
+      if (typeof q.answer !== "string" || !q.answer.trim())
+        return "fill 题 answer 必须是非空字符串（多个等价答案用 | 分隔）";
+    } else {
+      if (!["c", "python"].includes(q.language)) return "code 题需要 language: c / python";
+      if (typeof q.answer !== "string") return "code 题 answer 必须是期望的标准输出字符串";
+    }
+    if (!q.explanation || !String(q.explanation).trim()) return "缺少 explanation 解析";
+    return null;
   }
 
   /**
@@ -67,6 +90,18 @@
           toolContent = JSON.stringify(result.ok
             ? { ok: true, title: result.title, frames: result.frames.length, summary: result.summary }
             : { ok: false, error: result.error });
+        } else if (toolName === "quiz") {
+          const qErr = validateQuiz(args);
+          if (qErr) {
+            toolContent = JSON.stringify({ ok: false, error: qErr });
+          } else {
+            ui.onQuizStart?.();
+            ui.onQuiz?.(args);
+            toolContent = JSON.stringify({
+              ok: true,
+              note: "题卡已展示给学生，学生在页面作答，系统自动判题并记录学习档案。你无需等待结果，也不要透露答案，用一句过渡语收尾即可。",
+            });
+          }
         } else {
           // 默认按 run_code 处理
           const language = args.language === "c" ? "c" : "python";
@@ -99,14 +134,16 @@
   marked.setOptions({ breaks: false, gfm: true });
 
   /**
-   * 渲染助手文本为 HTML，同时返回其中代码块/可视化块信息
-   * @returns {{html: string, blocks: Array, visBlocks: Array}}
+   * 渲染助手文本为 HTML，同时返回其中代码块/可视化块/测验块信息
+   * @returns {{html: string, blocks: Array, visBlocks: Array, quizBlocks: Array}}
    * blocks: {lang:'c'|'python', code, autoRun, elId}
    * visBlocks: {elId, spec}
+   * quizBlocks: {elId, spec}
    */
   function renderMarkdown(text) {
     const blocks = [];
     const visBlocks = [];
+    const quizBlocks = [];
     const rawHtml = marked.parse(text || "");
     const clean = DOMPurify.sanitize(rawHtml);
 
@@ -129,6 +166,19 @@
         mount.id = elId;
         codeEl.parentNode.replaceWith(mount);
         visBlocks.push({ elId, spec });
+        return;
+      }
+
+      // quiz JSON 块 → 测验题卡挂载占位
+      if (rawLang === "quiz") {
+        const elId = "quiz-" + Math.random().toString(36).slice(2, 9);
+        let spec = null;
+        try { spec = JSON.parse(code); } catch { spec = { __parseError: code }; }
+        const mount = document.createElement("div");
+        mount.className = "quiz-mount";
+        mount.id = elId;
+        codeEl.parentNode.replaceWith(mount);
+        quizBlocks.push({ elId, spec });
         return;
       }
 
@@ -176,7 +226,7 @@
       codeEl.parentNode.replaceWith(card);
     });
 
-    return { html: host.innerHTML, blocks, visBlocks };
+    return { html: host.innerHTML, blocks, visBlocks, quizBlocks };
   }
 
   /** 在代码卡片内追加运行结果 */
@@ -207,5 +257,5 @@
     return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   }
 
-  window.Agent = { run, reset, renderMarkdown, attachCardResult };
+  window.Agent = { run, reset, renderMarkdown, attachCardResult, validateQuiz };
 })();
