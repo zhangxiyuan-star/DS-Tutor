@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据结构陪学 Agent</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">数</span>
+    <div class="brand-text">
+      <strong>数据结构陪学 Agent</strong>
+      <small id="modelStatus">未配置模型</small>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button id="btnClear" class="btn-ghost" title="清空对话">清空对话</button>
+    <button id="btnSettings" class="btn-ghost">⚙ 设置</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- 左：聊天 -->
+  <section class="chat-pane">
+    <div id="messages" class="messages">
+      <div class="welcome">
+        <h1>今天学什么数据结构？</h1>
+        <p>我可以讲解概念、对比易混点、推演复杂度，也可以直接写 C / Python 代码带你跑。</p>
+        <div class="suggestion-row">
+          <button class="chip" data-q="用生活中的例子讲清楚栈和队列的区别">栈和队列的区别</button>
+          <button class="chip" data-q="带我从零实现单链表（C 语言）">实现单链表（C）</button>
+          <button class="chip" data-q="递归我总搞不懂，能循序渐进教我吗？">递归入门</button>
+          <button class="chip" data-q="快速排序为什么平均是 O(nlogn)？最坏情况呢？">快排复杂度</button>
+          <button class="chip" data-q="二叉树的前中后序遍历，Python 实现">二叉树遍历（Python）</button>
+          <button class="chip" data-q="哈希表是怎么解决冲突的？">哈希冲突</button>
+        </div>
+        <p class="hint">先点「⚙ 设置」填好 API，即可开始对话</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="输入你的问题，Enter 发送 / Shift+Enter 换行"></textarea>
+      <button id="btnSend" class="btn-primary" title="发送">发送</button>
+    </div>
+  </section>
+
+  <!-- 右：代码工作台 -->
+  <section class="workbench">
+    <div class="wb-tabs">
+      <button class="wb-tab active" data-lang="c">C</button>
+      <button class="wb-tab" data-lang="python">Python</button>
+      <div class="wb-spacer"></div>
+      <span id="runnerInfo" class="runner-info"></span>
+      <button id="btnRun" class="btn-run">▶ 运行</button>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="editor" spellcheck="false"></textarea>
+    </div>
+    <div class="console-wrap">
+      <div class="console-head">
+        <span>输出控制台</span>
+        <button id="btnClearConsole" class="btn-mini">清空</button>
+      </div>
+      <pre id="console" class="console"></pre>
+    </div>
+  </section>
+
+</main>
+
+<!-- 设置弹窗 -->
+<div id="settingsMask" class="mask hidden">
+  <div class="dialog">
+    <div class="dialog-head">
+      <h2>API 设置</h2>
+      <button id="btnCloseSettings" class="btn-mini">✕</button>
+    </div>
+    <div class="dialog-body">
+      <label class="field">
+        <span>服务预设</span>
+        <select id="cfgPreset"></select>
+      </label>
+      <label class="field">
+        <span>API 地址（Base URL）</span>
+        <input id="cfgBaseUrl" type="text" placeholder="https://api.deepseek.com/v1">
+      </label>
+      <label class="field">
+        <span>API Key</span>
+        <input id="cfgApiKey" type="password" placeholder="sk-...（仅保存在本机）">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>模型名</span>
+          <input id="cfgModel" type="text" placeholder="deepseek-chat">
+        </label>
+        <label class="field field-sm">
+          <span>温度</span>
+          <input id="cfgTemp" type="number" min="0" max="2" step="0.1" value="0.5">
+        </label>
+      </div>
+      <label class="field field-inline">
+        <input id="cfgTools" type="checkbox" checked>
+        <span>模型支持函数调用（Tool Calling）。不支持请取消，将自动使用兼容模式</span>
+      </label>
+      <label class="field">
+        <span>教学风格</span>
+        <select id="cfgStyle">
+          <option value="guide">苏格拉底引导（先反问启发，再讲解）</option>
+          <option value="direct">直接讲解（高效给答案）</option>
+          <option value="exam">考点向（期末 / 考研，重套路与边界）</option>
+        </select>
+      </label>
+      <p class="dialog-note">所有配置仅保存在本机浏览器存储中，不会上传。</p>
+    </div>
+    <div class="dialog-foot">
+      <button id="btnTestApi" class="btn-ghost">测试连接</button>
+      <span id="testResult" class="test-result"></span>
+      <div class="dialog-spacer"></div>
+      <button id="btnSaveSettings" class="btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pyodide & Monaco（按需） -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script src="js/prompts.js"></script>
+<script src="js/config.js"></script>
+<script src="js/llm.js"></script>
+<script src="js/sandbox.js"></script>
+<script src="js/visualizer.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
