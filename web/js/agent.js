@@ -5,9 +5,14 @@
 
   function reset() { history = []; }
 
-  function buildSystem(cfg) {
+  function buildSystem(cfg, query) {
     let sys = PROMPTS.base + (PROMPTS.styles[cfg.style] || PROMPTS.styles.guide);
     if (!cfg.tools) sys += PROMPTS.noTools;
+    const hits = window.Knowledge?.retrieve(query, 3) || [];
+    if (hits.length) {
+      sys += "\n【内置课程知识库·命中条目】（来自本机内置知识库，内容与教材一致，可直接作为讲解依据，无需联网检索）\n"
+        + hits.map((h) => `《${h.title}》${h.content}`).join("\n");
+    }
     sys += window.Progress?.promptBrief?.() || "";
     return sys;
   }
@@ -43,11 +48,15 @@
   async function run(userText, cfg, ui) {
     history.push({ role: "user", content: userText });
 
+    // 内置知识库命中提示（注入见 buildSystem）
+    const kbHits = window.Knowledge?.retrieve(userText, 3) || [];
+    if (kbHits.length) ui.onKnowledge?.(kbHits);
+
     const useTools = !!cfg.tools;
     let guard = 0;
 
     while (guard++ < MAX_TOOL_ROUNDS) {
-      const messages = [{ role: "system", content: buildSystem(cfg) }, ...history];
+      const messages = [{ role: "system", content: buildSystem(cfg, userText) }, ...history];
 
       ui.beforeTurn?.();
       const assistant = await LLM.chatStream(

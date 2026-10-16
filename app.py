@@ -262,6 +262,33 @@ def start_server(port=0):
     return httpd, real_port
 
 
+WINDOW_TITLE = "数据结构陪学 Agent"
+
+
+def _force_light_title_bar():
+    """Windows 深色主题下窗口标题栏默认发黑，强制切为浅色以匹配纸墨主题"""
+    if os.name != "nt":
+        return
+    import ctypes
+    import time
+    user32 = ctypes.windll.user32
+    dwmapi = ctypes.windll.dwmapi
+    hwnd = 0
+    for _ in range(50):  # 最多等 10 秒窗口出现
+        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        if hwnd:
+            break
+        time.sleep(0.2)
+    if not hwnd:
+        return
+    value = ctypes.c_int(0)  # FALSE → 浅色标题栏
+    # WebView2 初始化期间会重置该属性，启动后 12 秒内反复应用确保生效
+    for _ in range(24):
+        for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE（20=Win10 2004+，19=更早版本）
+            dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value))
+        time.sleep(0.5)
+
+
 def main():
     port = int(os.environ.get("DS_TUTOR_PORT", "0"))
     httpd, port = start_server(port)
@@ -272,8 +299,9 @@ def main():
             # 纯浏览器调试模式
             threading.Event().wait()
         else:
+            threading.Thread(target=_force_light_title_bar, daemon=True).start()
             webview.create_window(
-                "数据结构陪学 Agent",
+                WINDOW_TITLE,
                 url=url,
                 width=1280,
                 height=860,

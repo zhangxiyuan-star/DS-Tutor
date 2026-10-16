@@ -286,6 +286,17 @@ html, body {
   border-radius: 50%;
   animation: spin .7s linear infinite;
 }
+
+/* 知识库命中提示 */
+.kb-note {
+  display: table;
+  font-size: 11.5px; color: var(--pine-deep);
+  background: #eef4ee;
+  border: 1px solid #d4e2d4;
+  border-radius: 100px;
+  padding: 3px 14px;
+  margin: 6px auto 2px;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* 输入区 */

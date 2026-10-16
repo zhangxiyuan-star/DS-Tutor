@@ -10,6 +10,7 @@
 - **结构动画（V2）**：LLM 调用 `visualize` 工具，前端按真实算法逐帧计算并渲染 SVG 动画，卡片内嵌聊天流，支持播放/暂停/单步/进度条/三档速度
 - **随堂测验（V3）**：LLM 调用 `quiz` 工具出单选/填空/编程题，前端渲染可作答卡片并自动判题（编程题走沙箱比对 stdout），答错可一键请求 Agent 讲解
 - **学习进度（V3）**：按知识点记录作答对错，localStorage 持久化；进度面板展示累计统计与薄弱点（作答 ≥2 次且正确率 <60%），可一键针对薄弱点出题；学习档案摘要自动注入系统提示词
+- **内置课程知识库（V3.1）**：15 条教材级考点条目全程本地检索，命中即注入系统提示词作为讲解依据，不依赖模型联网知识
 - **API 适配**：OpenAI 兼容协议，Python 后端代理消除 CORS；内置 DeepSeek / Kimi / 智谱 GLM / 通义千问 / OpenAI / Ollama / LM Studio / 自定义 8 组预设；无 function calling 的模型走围栏代码块兼容模式
 
 ## 可视化剧目（6 类）
@@ -48,6 +49,13 @@
 - 顶栏新增「▤ 学习进度」面板：累计统计、按知识点明细、薄弱点列表，支持"针对薄弱点出题"与清空记录
 - 验证：mock LLM 全链路冒烟通过——三题型渲染、答对/答错判题、进度统计与薄弱点识别、薄弱点定向出题、档案注入系统提示词、围栏兼容模式，浏览器实测均通过，无 JS 报错
 
+### V3.1（2026-10-17）内置课程知识库 + 去除窗口黑边 ✅
+
+- 新增 `web/js/knowledge.js`：15 条《数据结构》核心考点条目（复杂度、栈/队列、链表、KMP、二叉树、图、BST/AVL、B树/哈希、排序全表、递归、C 指针易错点等），内容与教材一致，全程本地不联网
+- 按用户问题关键词检索命中条目并注入系统提示词，作为 Agent 讲解的直接依据；聊天区显示「📚 命中内置知识库」提示条，未命中不注入
+- 修复 Windows 深色主题下 pywebview 窗口标题栏发黑：启动后由 DWM 强制浅色标题栏（`DWMWA_USE_IMMERSIVE_DARK_MODE`，启动 12 秒内重复应用防 WebView2 重置）
+- 验证：命中/未命中浏览器实测通过；mock 服务端确认知识库段落注入系统提示词；exe 重打包截图确认标题栏转浅色
+
 ## 使用
 
 1. `pip install -r requirements.txt`
@@ -65,5 +73,5 @@ ds-tutor/
 └── web/
     ├── index.html
     ├── css/style.css
-    └── js/  config.js / llm.js / prompts.js / progress.js / sandbox.js / visualizer.js / agent.js / app.js
+    └── js/  config.js / llm.js / prompts.js / knowledge.js / progress.js / sandbox.js / visualizer.js / agent.js / app.js
 ```

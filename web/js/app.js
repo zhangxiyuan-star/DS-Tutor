@@ -391,6 +391,13 @@
           finalizeSeg();
         }
       },
+      onKnowledge(entries) {
+        const div = document.createElement("div");
+        div.className = "kb-note";
+        div.textContent = "📚 命中内置知识库：" + entries.map((e) => e.title).join("、");
+        messagesEl.appendChild(div);
+        scrollDown();
+      },
       onToolStart(language, code) {
         if (current && current.text.trim()) finalizeSeg();
         else if (current) { current.body.classList.remove("typing-dot"); current = null; }
